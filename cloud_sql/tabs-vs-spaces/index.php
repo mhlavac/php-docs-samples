@@ -13,10 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require_once 'vendor/autoload.php';
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
-
 require_once 'src/DB.php';
 require_once 'src/Votes.php';
 
