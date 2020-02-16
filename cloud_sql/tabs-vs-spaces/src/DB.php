@@ -1,5 +1,5 @@
 <?php
-# Copyright 2018 Google LLC
+# Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,16 +26,12 @@ class DB
         $schema = getenv("DB_NAME");
         $hostname = getenv("DB_HOSTNAME") ?: "127.0.0.1";
         $cloud_sql_connection_name = getenv("CLOUD_SQL_CONNECTION_NAME");
-        # [START cloud_sql_postgres_pdo_create]
-        // $username = 'your_db_user';
-        // $password = 'yoursupersecretpassword';
-        // $schema = 'your_db_name';
-        // $cloud_sql_connection_name = 'Your Cloud SQL Connection name';
+        # [START cloud_sql_mysql_pdo_create]
 
         if ($cloud_sql_connection_name) {
             // Connect using UNIX sockets
             $dsn = sprintf(
-                'pgsql:dbname=%s;host=/cloudsql/%s',
+                'mysql:dbname=%s;unix_socket=/cloudsql/%s',
                 $schema,
                 $cloud_sql_connection_name
             );
@@ -46,6 +42,6 @@ class DB
         }
 
         return new PDO($dsn, $username, $password);
-        # [END cloud_sql_postgres_pdo_create]
+        # [END cloud_sql_mysql_pdo_create]
     }
 }
