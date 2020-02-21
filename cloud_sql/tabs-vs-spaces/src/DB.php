@@ -40,8 +40,15 @@ class DB
             // $hostname = '127.0.0.1';
             $dsn = sprintf('mysql:dbname=%s;host=%s', $schema, $hostname);
         }
+        
+        try {
+            return new PDO($dsn, $username, $password, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        } catch (\PDOException $e) {
+            header('HTTP/1.1 500 Internal Server Error');
+            die("Error connecting to the database");
+        }
 
-        return new PDO($dsn, $username, $password);
+        
         # [END cloud_sql_mysql_pdo_create]
     }
 }
