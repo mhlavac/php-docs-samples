@@ -1,5 +1,7 @@
 # Tabs VS Spaces - GKE + Cloud SQL
 
+This is based on this codelab <https://gabi.fyi/postgresql-gke>
+
 ## Project Configuration
 
 Enable the following APIs, either via GUI or via `cloudshell`:
