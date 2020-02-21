@@ -28,6 +28,8 @@ First on your `.bashrc` on cloudshell create the environment variable `$MY_DB_PA
 echo "export MY_DB_PASSWORD=thisIsAStrongPassword" >> ~/.bashrc
 ```
 
+Reopen `cloudshell` to make sure the profile was loaded with the new ENV.
+
 ## Cloud SQL
 
 Provision Cloud SQL Instance with HA
