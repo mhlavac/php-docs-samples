@@ -1,53 +1,190 @@
-# Connection to Cloud SQL - PostgreSQL
+# Tabs VS Spaces - GKE + Cloud SQL
 
-## Before you begin
+## Project Configuration
 
-1. Before you use this code sample, you need to have [Composer](https://getcomposer.org/) installed or downloaded into this folder. Download instructions can be found [here](https://getcomposer.org/download/).
-2. Create a PostgreSQL Cloud SQL Instance by following these [instructions](https://cloud.google.com/sql/docs/postgres/create-instance). Note the connection string, database user, and database password that you create.
-3. Create a database for your application by following these [instructions](https://cloud.google.com/sql/docs/postgres/create-manage-databases). Note the database name.
-4. Create a service account with the 'Cloud SQL Client' permissions by following these [instructions](https://cloud.google.com/sql/docs/postgres/connect-external-app#4_if_required_by_your_authentication_method_create_a_service_account). Download a JSON key to use to authenticate your connection.
-5. Use the information noted in the previous steps:
+Enable the following APIs, either via GUI or via `cloudshell`:
 
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service/account/key.json
-export CLOUD_SQL_CONNECTION_NAME='<MY-PROJECT>:<INSTANCE-REGION>:<MY-DATABASE>'
-export DB_USER='my-db-user'
-export DB_PASS='my-db-pass'
-export DB_NAME='my-db-name'
-export DB_HOSTNAME='localhost' # If connecting using TCP instead of Unix Sockets
+* Enable Cloud Shell API
+* Enable Container Registry API
+* Enable Kubernetes Engine API
+* Enable Cloud Build API
+* Enable Cloud SQL Admin API
+* Enable Cloud Run API
+
+```sh
+gcloud services enable cloudshell.googleapis.com \
+  cloudbuild.googleapis.com \
+  sqladmin.googleapis.com \
+  containerregistry.googleapis.com \ 
+  container.googleapis.com \
+  run.googleapis.com --async
 ```
 
-Note: Saving credentials in environment variables is convenient, but not secure - consider a more secure solution such as [Cloud KMS](https://cloud.google.com/kms/) to help keep secrets safe.
+First on your `.bashrc` on cloudshell create the environment variable `$MY_DB_PASSWORD`:
 
-## Running Locally
-
-To run this application locally, download and install the `cloud_sql_proxy` by following the instructions [here](https://cloud.google.com/sql/docs/postgres/sql-proxy#install).
-
-Once the proxy is ready, use the following command to start the proxy in the background:
-
-```bash
-$ ./cloud_sql_proxy -dir=/cloudsql --instances=$CLOUD_SQL_CONNECTION_NAME --credential_file=$GOOGLE_APPLICATION_CREDENTIALS
+```sh
+echo "export MY_DB_PASSWORD=thisIsAStrongPassword" >> ~/.bashrc
 ```
 
-Note: Make sure to run the command under a user with write access in the `/cloudsql` directory. This proxy will use this folder to create a unix socket the application will use to connect to Cloud SQL.
+## Cloud SQL
 
-Execute the following:
+Provision Cloud SQL Instance with HA
 
-```bash
-$ php -S localhost:8080
+```sh
+gcloud sql instances create --zone us-central1-f --database-version MYSQL_5_7 --tier db-n1-standard-4 --enable-bin-log --availability-type REGIONAL quizzes
 ```
 
-Navigate towards http://localhost:8080 to verify your application is running correctly.
+Create `quizzes` schema
 
-## Google App Engine Standard
-
-To run on GAE-Standard, create an App Engine project by following the setup for these [instructions](https://cloud.google.com/appengine/docs/standard/php7/quickstart#before-you-begin).
-
-First, update `app.yaml` with the correct values to pass the environment variables into the runtime.
-
-Next, the following command will deploy the application to your Google Cloud project:
-
-```bash
-$ gcloud app deploy
+```sh
+gcloud sql databases create results --instance=quizzes
 ```
 
+Set `root` password
+
+```sh
+gcloud sql users set-password root --instance quizzes --host '127.0.0.1' --password $MY_DB_PASSWORD
+```
+
+## IAM & Authentication
+
+Set up proxy credentials (Cloud SQL Client permission) as `proxy-user`
+
+```sh
+gcloud iam service-accounts create proxy-user --display-name "proxy-user"
+```
+
+Give permissions to service account
+
+```sh
+gcloud projects add-iam-policy-binding $(gcloud config get-value core/project) --member serviceAccount:proxy-user@$(gcloud config get-value core/project).iam.gserviceaccount.com --role roles/cloudsql.client
+```
+
+Generate `key.json`
+
+```sh
+gcloud iam service-accounts keys create key.json --iam-account proxy-user@$(gcloud config get-value core/project).iam.gserviceaccount.com
+```
+
+## Application
+
+Download `cloud_sql_proxy` and make it runnable
+
+```sh
+wget https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 -O cloud_sql_proxy && chmod +x cloud_sql_proxy
+```
+
+Connect the `cloud_sql_proxy`
+
+```sh
+./cloud_sql_proxy -instances=$(gcloud config get-value core/project):us-central1:quizzes=tcp:3306 -credential_file=key.json &
+```
+
+Download **TabsVsSpaces** from github and enter the folder
+
+```sh
+git clone --single-branch --branch cloudsql-sample-mysql https://github.com/gabidavila/php-docs-samples.git && cp -R php-docs-samples/cloud_sql/tabs-vs-spaces tabs-vs-spaces && cd tabs-vs-spaces
+```
+
+Run application locally
+
+```sh
+DB_USER=root DB_PASS=$MY_DB_PASSWORD DB_NAME=results php -S 0.0.0.0:8080 -d error_reporting=0
+```
+
+## Containerize
+
+Build the docker image
+
+```sh
+docker build . -t quizzes
+```
+
+Run the docker image and show TabsVsSpaces app working
+
+```sh
+docker run --net="host" -d --rm --name runtime -e "DB_USER=root" -e "DB_PASS=$MY_DB_PASSWORD" -e "DB_NAME=results" quizzes
+```
+
+Kill `cloud_sql_proxy` and stop docker
+
+```sh
+killall cloud_sql_proxy && docker stop runtime
+```
+
+_Push_ to **Google Container Registry** using Google Cloud Build
+
+```sh
+gcloud builds submit --tag gcr.io/$(gcloud config get-value core/project)/quizzes
+```
+
+## Deploy
+
+For this part we can deploy either using Google Kubernetes Engine or Google Cloud Run. Choose what path you want to follow.
+
+### Deploy on GKE
+
+Create the cluster
+
+```sh
+gcloud container clusters create php-cluster --zone us-central1-f  --machine-type=e2-highcpu-2  --enable-autorepair --enable-autoscaling --max-nodes=10 --min-nodes=1
+```
+
+List Clusters
+
+```sh
+gcloud container clusters list
+```
+
+Enable `kubectl` to use the cluster created on the previous step
+
+```sh
+gcloud container clusters get-credentials php-cluster --zone us-central1-f
+```
+
+Create secrets for kubernetes
+
+```sh
+kubectl create secret generic csql-proxy-acct --from-file=credentials.json=../key.json && kubectl create secret generic csql-secrets --from-literal=username=root  --from-literal=password=$MY_DB_PASSWORD --from-literal=dbname=results
+```
+
+---
+
+**IMPORTANT**
+
+**
+**
+
+**Edit `quizzes_deployment.yml` file replacing `PROJECT_ID` and `INSTANCE_CONNECTION_NAME`**
+
+---
+
+Create the deployment ("Workload")
+
+```sh
+kubectl create -f quizzes_deployment.yml
+```
+
+Enable horizontal pod autoscaling
+
+```sh
+kubectl autoscale deployment quizzes --min=3 --max=10 --cpu-percent=50
+```
+
+To see the pods being created execute
+
+```sh
+kubectl get pods
+```
+
+Expose the deployment
+
+```sh
+kubectl expose deployment quizzes --type "LoadBalancer" --port 80 --target-port 8080
+```
+
+Use `kubectl` to check the status of the `LoadBalancer`
+
+```sh
+kubectl describe services quizzes
+```
