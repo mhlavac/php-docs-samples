@@ -47,7 +47,7 @@ gcloud sql databases create results --instance=quizzes
 Set `root` password
 
 ```sh
-gcloud sql users set-password root --instance quizzes --host '127.0.0.1' --password $MY_DB_PASSWORD
+gcloud sql users set-password root --instance quizzes --host % --password $MY_DB_PASSWORD
 ```
 
 ## IAM & Authentication
